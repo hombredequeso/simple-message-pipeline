@@ -4,6 +4,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace SimpleMessagePipelineTests
 {
+    public interface IIocManagement<TTransportMessage>
+    {
+        IServiceCollection CreateServiceCollection();
+        void InitialiseScope(IServiceProvider scopedServiceProvider, TTransportMessage transportMessage);
+    }
+
     public interface IMessageSource<TMessage>
     {
         TMessage Poll();
@@ -27,20 +33,20 @@ namespace SimpleMessagePipelineTests
             IMessageSource<TTransportMessage> messageSource,
             ITransportToDomainMessageTransform<TTransportMessage, TDomainMessage> messageTransform,
             ServiceProvider rootServiceProvider,
-            IIocManagement iocManagement
+            IIocManagement<TTransportMessage> iocManagement
         )
         {
-            TTransportMessage nextTransportMessage = messageSource.Poll();
-            TDomainMessage nextMessage = 
-                messageTransform.ToDomainMessage(nextTransportMessage);
+            TTransportMessage transportMessage = messageSource.Poll();
+            TDomainMessage domainMessage = 
+                messageTransform.ToDomainMessage(transportMessage);
 
             using (IServiceScope scope = rootServiceProvider.CreateScope())
             {
                 // Setup the pipeline for running through the current msg:
                 IServiceProvider scopeServiceProvider = scope.ServiceProvider;
-                iocManagement.InitialiseScope(scopeServiceProvider);
+                iocManagement.InitialiseScope(scopeServiceProvider, transportMessage);
 
-                Type msgType = nextMessage.GetType();
+                Type msgType = domainMessage.GetType();
                 Type handlerType = typeof(IHandler<>).MakeGenericType(msgType);
 
                 var handler = scopeServiceProvider.GetService(handlerType);
@@ -48,15 +54,15 @@ namespace SimpleMessagePipelineTests
 
                 try
                 {
-                    handleMethod.Invoke(handler, new[] {(object) nextMessage});
-                    messageSource.Ack(nextTransportMessage);
+                    handleMethod.Invoke(handler, new[] {(object) domainMessage});
+                    messageSource.Ack(transportMessage);
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine($"Error handling message: {e.Message}");
                 }
             }
-            return nextTransportMessage;
+            return transportMessage;
         }
     }
 }

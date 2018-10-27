@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace SimpleMessagePipelineTests.TestEntities
 {
-    public class TestIocManagement: IIocManagement
+    public class TestIocManagement<TTransportMessage>: IIocManagement<TTransportMessage>
     {
         private Guid _scopeId;
 
@@ -15,20 +15,25 @@ namespace SimpleMessagePipelineTests.TestEntities
         public IServiceCollection CreateServiceCollection()
         {
             var serviceCollection = new ServiceCollection();
-            serviceCollection.AddScoped<ExecutionContext>();
-            serviceCollection.AddScoped<IExecutionContext>(context => context.GetRequiredService<ExecutionContext>());
-            serviceCollection.AddScoped<ISetExecutionContext>(context => context.GetRequiredService<ExecutionContext>());
+            serviceCollection.AddScoped<ExecutionContext<TTransportMessage>>();
+            serviceCollection.AddScoped<IExecutionContext<TTransportMessage>>(
+                context => context.GetRequiredService<ExecutionContext<TTransportMessage>>());
+            serviceCollection.AddScoped<ISetExecutionContext<TTransportMessage>>(
+                context => context.GetRequiredService<ExecutionContext<TTransportMessage>>());
             serviceCollection
                 .AddScoped<IHandler<TestEvent>, TestEventHandler>();
             return serviceCollection;
         }
 
-        public void InitialiseScope(IServiceProvider scopedServiceProvider)
+        public void InitialiseScope(
+            IServiceProvider scopedServiceProvider,
+            TTransportMessage transportMessage)
         {
-            ISetExecutionContext executionContextSetter = scopedServiceProvider
-                .GetService<ISetExecutionContext>();
+            var executionContextSetter = scopedServiceProvider
+                .GetService<ISetExecutionContext<TTransportMessage>>();
             Guid id = _scopeId;
             executionContextSetter.Id = id;
+            executionContextSetter.TransportMessage = transportMessage;
         }
     }
 }

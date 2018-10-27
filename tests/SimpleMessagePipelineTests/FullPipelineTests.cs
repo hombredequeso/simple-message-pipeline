@@ -18,7 +18,8 @@ namespace SimpleMessagePipelineTests
             var scopeId = Guid.NewGuid();
             
             var messageSource = new TestMessageSource<TransportMessage>(transportMessage);
-            IIocManagement iocManagement = new TestIocManagement(scopeId);
+            IIocManagement<TransportMessage> iocManagement = 
+                new TestIocManagement<TransportMessage>(scopeId);
             
             // Initialize Ioc
             IServiceCollection serviceCollection = iocManagement.CreateServiceCollection();
@@ -42,25 +43,24 @@ namespace SimpleMessagePipelineTests
         }
     }
 
-    public interface IIocManagement
-    {
-        IServiceCollection CreateServiceCollection();
-        void InitialiseScope(IServiceProvider scopedServiceProvider);
-    }
 
-
-    public interface ISetExecutionContext
+    public interface ISetExecutionContext<TTransportMessage>
     {
         Guid Id { get; set; }
+        TTransportMessage TransportMessage { get; set; }
     }
 
-    public interface IExecutionContext
+    public interface IExecutionContext<TTransportMessage>
     {
         Guid Id { get; }
+        TTransportMessage TransportMessage { get; }
     }
     
-    public class ExecutionContext: ISetExecutionContext, IExecutionContext
+    public class ExecutionContext<TTransportMessage>
+        : ISetExecutionContext<TTransportMessage>, 
+            IExecutionContext<TTransportMessage>
     {
         public Guid Id { get; set; }
+        public TTransportMessage TransportMessage { get; set; }
     }
 }

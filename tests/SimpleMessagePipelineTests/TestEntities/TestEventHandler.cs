@@ -5,9 +5,9 @@ namespace SimpleMessagePipelineTests.TestEntities
 {
     public class TestEventHandler : IHandler<TestEvent>
     {
-        private IExecutionContext _executionContext;
+        private IExecutionContext<TransportMessage> _executionContext;
 
-        public TestEventHandler(IExecutionContext executionContext)
+        public TestEventHandler(IExecutionContext<TransportMessage> executionContext)
         {
             _executionContext = executionContext;
         }
