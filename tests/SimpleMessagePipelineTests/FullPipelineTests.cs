@@ -25,24 +25,18 @@ namespace SimpleMessagePipelineTests
             IServiceCollection serviceCollection = iocManagement.CreateServiceCollection();
             ServiceProvider rootServiceProvider = serviceCollection.BuildServiceProvider();
             
-            // Start main loop...
-            TransportMessage nextTransportMessage = messageSource.Poll();
-            var nextMessage = nextTransportMessage.Message;
-
             TransportMessage processedMessage = MessagePipeline.Run(
                 messageSource, 
                 new MessageTransform(), 
-                // tm => tm.Message,
                 rootServiceProvider, 
                 iocManagement);
             messageSource.AckCount.Should().Be(1);
             processedMessage.Should().Be(transportMessage);
 
             TestEventHandlerInvocationStats.HandledEvents.Single().Should().Be(
-                Tuple.Create(scopeId, testEvent));
+                Tuple.Create(scopeId, transportMessage, testEvent));
         }
     }
-
 
     public interface ISetExecutionContext<TTransportMessage>
     {

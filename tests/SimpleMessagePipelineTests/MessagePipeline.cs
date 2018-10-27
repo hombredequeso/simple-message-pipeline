@@ -26,7 +26,6 @@ namespace SimpleMessagePipelineTests
         TDomainMessage ToDomainMessage(TTransportMessage transportMessage);
     }
 
-    
     public static class MessagePipeline
     {
         public static TTransportMessage Run<TTransportMessage, TDomainMessage>(

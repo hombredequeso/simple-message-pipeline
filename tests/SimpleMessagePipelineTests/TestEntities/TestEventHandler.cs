@@ -15,13 +15,16 @@ namespace SimpleMessagePipelineTests.TestEntities
         public void Handle(TestEvent msg)
         {
             TestEventHandlerInvocationStats.HandledEvents
-                .Add(Tuple.Create(_executionContext.Id, msg));
+                .Add(Tuple.Create(
+                    _executionContext.Id, 
+                    _executionContext.TransportMessage, 
+                    msg));
         }
     }
 
     public static class TestEventHandlerInvocationStats
     {
-        public static List<Tuple<Guid, TestEvent>> HandledEvents = 
-            new List<Tuple<Guid, TestEvent>>();
+        public static List<Tuple<Guid, TransportMessage, TestEvent>> HandledEvents = 
+            new List<Tuple<Guid, TransportMessage, TestEvent>>();
     }
 }
