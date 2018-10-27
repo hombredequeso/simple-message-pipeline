@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using LanguageExt;
 
 namespace SimpleMessagePipelineTests.TestEntities
 {
@@ -12,9 +13,9 @@ namespace SimpleMessagePipelineTests.TestEntities
             _message = message;
         }
 
-        public Task<TMsg> Poll()
+        public Task<Option<TMsg>> Poll()
         {
-            return Task.FromResult(_message);
+            return Task.FromResult(Option<TMsg>.Some(_message));
         }
 
         public Task Ack(TMsg msg)

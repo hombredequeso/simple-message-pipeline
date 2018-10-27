@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using FluentAssertions;
+using LanguageExt;
 using Microsoft.Extensions.DependencyInjection;
 using SimpleMessagePipelineTests.TestEntities;
 using Xunit;
@@ -25,13 +26,16 @@ namespace SimpleMessagePipelineTests
             IServiceCollection serviceCollection = iocManagement.CreateServiceCollection();
             ServiceProvider rootServiceProvider = serviceCollection.BuildServiceProvider();
             
-            TransportMessage processedMessage = await MessagePipeline.Run(
+            Option<TransportMessage> processedMessage = await MessagePipeline.Run(
                 messageSource, 
                 new MessageTransform(), 
                 rootServiceProvider, 
                 iocManagement);
             messageSource.AckCount.Should().Be(1);
-            processedMessage.Should().Be(transportMessage);
+            processedMessage.Match(
+                m => m.Should().Be(transportMessage),
+                () => Assert.True(false, "should be some")
+            );
 
             TestEventHandlerInvocationStats.HandledEvents.Single().Should().Be(
                 Tuple.Create(scopeId, transportMessage, testEvent));

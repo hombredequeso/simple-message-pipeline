@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Reflection;
 using System.Threading.Tasks;
+using LanguageExt;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace SimpleMessagePipelineTests
@@ -13,7 +14,7 @@ namespace SimpleMessagePipelineTests
 
     public interface IMessageSource<TTransportMessage>
     {
-        Task<TTransportMessage> Poll();
+        Task<Option<TTransportMessage>> Poll();
         Task Ack(TTransportMessage msg);
     }
 
@@ -29,39 +30,63 @@ namespace SimpleMessagePipelineTests
 
     public static class MessagePipeline
     {
-        public static async Task<TTransportMessage> Run<TTransportMessage, TDomainMessage>(
+        public static Task<Option<TTransportMessage>> Run<TTransportMessage, TDomainMessage>(
             IMessageSource<TTransportMessage> messageSource,
             ITransportToDomainMessageTransform<TTransportMessage, TDomainMessage> messageTransform,
             ServiceProvider rootServiceProvider,
             IIocManagement<TTransportMessage> iocManagement
         )
         {
-            TTransportMessage transportMessage = await messageSource.Poll();
-            TDomainMessage domainMessage = 
-                messageTransform.ToDomainMessage(transportMessage);
+            return 
+                messageSource.Poll()
+                .MapAsync(transportMessage =>
+                    TransportMessageZ(
+                        messageSource, 
+                        messageTransform, 
+                        rootServiceProvider, 
+                        iocManagement, 
+                        transportMessage)
+                ).ToOption();
+        }
 
+        private static async Task<TTransportMessage>
+            TransportMessageZ<TTransportMessage, TDomainMessage>(
+                IMessageSource<TTransportMessage> messageSource,
+                ITransportToDomainMessageTransform<TTransportMessage,
+                    TDomainMessage> messageTransform,
+                ServiceProvider rootServiceProvider,
+                IIocManagement<TTransportMessage> iocManagement,
+                TTransportMessage transportMessage)
+        {
             using (IServiceScope scope = rootServiceProvider.CreateScope())
             {
+                TDomainMessage domainMessage =
+                    messageTransform.ToDomainMessage(transportMessage);
                 // Setup the pipeline for running through the current msg:
-                IServiceProvider scopeServiceProvider = scope.ServiceProvider;
-                iocManagement.InitialiseScope(scopeServiceProvider, transportMessage);
+                IServiceProvider scopeServiceProvider =
+                    scope.ServiceProvider;
+                iocManagement.InitialiseScope(scopeServiceProvider,
+                    transportMessage);
 
                 Type msgType = domainMessage.GetType();
-                Type handlerType = typeof(IHandler<>).MakeGenericType(msgType);
+                Type handlerType =
+                    typeof(IHandler<>).MakeGenericType(msgType);
 
-                var handler = scopeServiceProvider.GetService(handlerType);
+                object handler = scopeServiceProvider.GetService(handlerType);
+                
                 MethodInfo handleMethod = handlerType.GetMethod("Handle");
 
                 try
                 {
-                    Task t = (Task)handleMethod.Invoke(handler, new[] {(object) domainMessage});
-                    t.ConfigureAwait(false);
-                    await t;
+                    Task t = (Task) handleMethod.Invoke(handler,
+                        new[] {(object) domainMessage});
+                    await t.ConfigureAwait(false);
                     await messageSource.Ack(transportMessage);
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"Error handling message: {e.Message}");
+                    Console.WriteLine(
+                        $"Error handling message: {e.Message}");
                 }
             }
             return transportMessage;
