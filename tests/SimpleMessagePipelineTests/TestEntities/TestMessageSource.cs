@@ -1,4 +1,6 @@
-﻿namespace SimpleMessagePipelineTests.TestEntities
+﻿using System.Threading.Tasks;
+
+namespace SimpleMessagePipelineTests.TestEntities
 {
     public class TestMessageSource<TMsg> : IMessageSource<TMsg>
     {
@@ -10,14 +12,15 @@
             _message = message;
         }
 
-        public TMsg Poll()
+        public Task<TMsg> Poll()
         {
-            return _message;
+            return Task.FromResult(_message);
         }
 
-        public void Ack(TMsg msg)
+        public Task Ack(TMsg msg)
         {
             ++AckCount;
+            return Task.CompletedTask;
         }
     }
 }

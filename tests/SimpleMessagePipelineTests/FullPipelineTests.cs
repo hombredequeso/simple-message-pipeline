@@ -10,7 +10,7 @@ namespace SimpleMessagePipelineTests
     public class FullPipelineTests
     {
         [Fact]
-        public void BasicPipelineTest()
+        public async void BasicPipelineTest()
         {
             // Test setup
             TestEvent testEvent= new TestEvent(Guid.NewGuid());
@@ -25,7 +25,7 @@ namespace SimpleMessagePipelineTests
             IServiceCollection serviceCollection = iocManagement.CreateServiceCollection();
             ServiceProvider rootServiceProvider = serviceCollection.BuildServiceProvider();
             
-            TransportMessage processedMessage = MessagePipeline.Run(
+            TransportMessage processedMessage = await MessagePipeline.Run(
                 messageSource, 
                 new MessageTransform(), 
                 rootServiceProvider, 

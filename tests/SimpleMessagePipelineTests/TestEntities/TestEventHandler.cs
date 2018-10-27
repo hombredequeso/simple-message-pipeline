@@ -1,19 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace SimpleMessagePipelineTests.TestEntities
 {
     public class TestEventHandler : IHandler<TestEvent>
     {
-        private IExecutionContext<TransportMessage> _executionContext;
+        private readonly IExecutionContext<TransportMessage> _executionContext;
 
         public TestEventHandler(IExecutionContext<TransportMessage> executionContext)
         {
             _executionContext = executionContext;
         }
 
-        public void Handle(TestEvent msg)
+        public async Task Handle(TestEvent msg)
         {
+            int z = await Task.FromResult(1);
             TestEventHandlerInvocationStats.HandledEvents
                 .Add(Tuple.Create(
                     _executionContext.Id, 

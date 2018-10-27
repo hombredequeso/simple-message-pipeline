@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace SimpleMessagePipelineTests
@@ -10,15 +11,15 @@ namespace SimpleMessagePipelineTests
         void InitialiseScope(IServiceProvider scopedServiceProvider, TTransportMessage transportMessage);
     }
 
-    public interface IMessageSource<TMessage>
+    public interface IMessageSource<TTransportMessage>
     {
-        TMessage Poll();
-        void Ack(TMessage msg);
+        Task<TTransportMessage> Poll();
+        Task Ack(TTransportMessage msg);
     }
 
     public interface IHandler<TMessage>
     {
-        void Handle(TMessage msg);
+        Task Handle(TMessage msg);
     }
 
     public interface ITransportToDomainMessageTransform<TTransportMessage, TDomainMessage>
@@ -28,14 +29,14 @@ namespace SimpleMessagePipelineTests
 
     public static class MessagePipeline
     {
-        public static TTransportMessage Run<TTransportMessage, TDomainMessage>(
+        public static async Task<TTransportMessage> Run<TTransportMessage, TDomainMessage>(
             IMessageSource<TTransportMessage> messageSource,
             ITransportToDomainMessageTransform<TTransportMessage, TDomainMessage> messageTransform,
             ServiceProvider rootServiceProvider,
             IIocManagement<TTransportMessage> iocManagement
         )
         {
-            TTransportMessage transportMessage = messageSource.Poll();
+            TTransportMessage transportMessage = await messageSource.Poll();
             TDomainMessage domainMessage = 
                 messageTransform.ToDomainMessage(transportMessage);
 
@@ -53,8 +54,10 @@ namespace SimpleMessagePipelineTests
 
                 try
                 {
-                    handleMethod.Invoke(handler, new[] {(object) domainMessage});
-                    messageSource.Ack(transportMessage);
+                    Task t = (Task)handleMethod.Invoke(handler, new[] {(object) domainMessage});
+                    t.ConfigureAwait(false);
+                    await t;
+                    await messageSource.Ack(transportMessage);
                 }
                 catch (Exception e)
                 {
