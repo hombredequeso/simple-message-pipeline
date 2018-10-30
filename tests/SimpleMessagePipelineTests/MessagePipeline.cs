@@ -27,12 +27,42 @@ namespace SimpleMessagePipelineTests
     {
         Option<TDomainMessage> ToDomainMessage(TTransportMessage transportMessage);
     }
+    
+    public interface IPipelineError
+    {}
+    
+    public class MessageHandlingException: IPipelineError
+    {
+        public Exception Exception { get; }
+        public MessageHandlingException(Exception exception)
+        {
+            Exception = exception;
+        }
+    }
+
+    public class UnableToConstructHandler : IPipelineError
+    {
+        public UnableToConstructHandler(Exception exception)
+        {
+            Exception = exception;
+        }
+
+        public Exception Exception { get; }
+    }
+    
+    public class NoHandleMethodOnHandler: IPipelineError
+    {}
+    
+    public class NoTransportMessageAvailable: IPipelineError
+    {}
+    
+    public class ErrorParsingTransportMessage: IPipelineError
+    {}
 
     public static class MessagePipeline
     {
-        public static async Task<Either<
-                MessagePipelineError, 
-                Tuple<TTransportMessage, TDomainMessage>>>
+        public static async 
+            Task<Either<IPipelineError, Tuple<TTransportMessage, TDomainMessage>>>
             Run<TTransportMessage, TDomainMessage>(
                 IMessageSource<TTransportMessage> messageSource,
                 ITransportToDomainMessageTransform<TTransportMessage, TDomainMessage> messageTransform,
@@ -42,7 +72,7 @@ namespace SimpleMessagePipelineTests
         {
             Option<TTransportMessage> transportMessageO = 
                 await messageSource.Poll();
-            Option<Either<MessagePipelineError, Tuple<TTransportMessage, TDomainMessage>>> 
+            Option<Either<IPipelineError, Tuple<TTransportMessage, TDomainMessage>>> 
                 processMessageResult =
                 await transportMessageO.MapAsync(
                     transportMessage =>
@@ -52,26 +82,19 @@ namespace SimpleMessagePipelineTests
                             iocManagement,
                             transportMessage)).ToOption();
             
-            Either<MessagePipelineError, Tuple<TTransportMessage, TDomainMessage>> 
+            Either<IPipelineError, Tuple<TTransportMessage, TDomainMessage>> 
                 resFinal = processMessageResult.Match(
-                mpr => mpr,
-                () => Prelude.Left(MessagePipelineError.NoTransportMessageAvailable)
-            );
+                    mpr => mpr,
+                    () => Prelude.Left<IPipelineError>(new NoTransportMessageAvailable()));
             
             resFinal.IfRight(m => messageSource.Ack(m.Item1));
             
             return resFinal;
         }
-
-        public enum MessagePipelineError
-        {
-            NoTransportMessageAvailable = 1,
-            ErrorParsingTransportMessage,
-            ExceptionHandlingMessage
-        }
+        
 
         private static Task<Either<
-                MessagePipelineError, 
+                IPipelineError, 
                 Tuple<TTransportMessage, TDomainMessage>>>
             ProcessTransportMessage<TTransportMessage, TDomainMessage>(
                 ITransportToDomainMessageTransform<TTransportMessage,
@@ -83,7 +106,7 @@ namespace SimpleMessagePipelineTests
             Option<TDomainMessage> domainMessageO =
                 messageTransform.ToDomainMessage(transportMessage);
             
-            OptionAsync<Either<MessagePipelineError, Tuple<TTransportMessage, TDomainMessage>>> result2 = 
+            OptionAsync<Either<IPipelineError, Tuple<TTransportMessage, TDomainMessage>>> result2 = 
                 domainMessageO.MapAsync(d =>
                     HandleDomainMessage(
                         rootServiceProvider,
@@ -91,14 +114,18 @@ namespace SimpleMessagePipelineTests
                         transportMessage,
                         d));
 
-            return result2.Match(
+        Task<Either<
+                IPipelineError, 
+                Tuple<TTransportMessage, TDomainMessage>>>
+            res = result2.Match(
                 sm => sm,
-                () => Prelude.Left(MessagePipelineError
-                    .ErrorParsingTransportMessage));
+                () => Prelude.Left((IPipelineError)new ErrorParsingTransportMessage()));
+            
+            return res;
         }
         
-        private static async Task<Either<
-                                    MessagePipelineError, 
+        private static Task<Either<
+                                    IPipelineError, 
                                     Tuple<TTransportMessage, TDomainMessage>>>
             HandleDomainMessage<TTransportMessage, TDomainMessage>(
                 ServiceProvider rootServiceProvider,
@@ -110,37 +137,64 @@ namespace SimpleMessagePipelineTests
             {
                 var scopeServiceProvider = scope.ServiceProvider;
                 iocManagement.InitialiseScope(scopeServiceProvider, transportMessage);
-                var handler = GetHandler(domainMessage, scopeServiceProvider);
-
-                try
-                {
-                    Task t = (Task) handler.Method.Invoke(handler.Object,
-                        new[] {(object) domainMessage});
-                    await t.ConfigureAwait(false);
-                    return Prelude.Right(
-                        Tuple.Create(transportMessage,
-                        domainMessage));
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(
-                        $"Error handling message: {e.Message}");
-                    return Prelude.Left(MessagePipelineError.ExceptionHandlingMessage);
-                }
+                Either<IPipelineError, ObjectHander> handler = 
+                    GetHandler(domainMessage, scopeServiceProvider);
+                var res = handler.BindAsync(h =>
+                    HandleMessage(h, transportMessage, domainMessage));
+                return res;
+            }
+        }
+        
+        private static async Task<Either<
+                                    IPipelineError, 
+                                    Tuple<TTransportMessage, TDomainMessage>>>
+            HandleMessage<TTransportMessage, TDomainMessage>(
+                ObjectHander handler,
+                TTransportMessage transportMessage,
+                TDomainMessage domainMessage)
+        {
+            try
+            {
+                Task t = (Task) handler.Method.Invoke(handler.Object,
+                    new[] {(object) domainMessage});
+                await t.ConfigureAwait(false);
+                return Prelude.Right(
+                    Tuple.Create(transportMessage,
+                    domainMessage));
+            }
+            catch (Exception e)
+            {
+                IPipelineError err = new MessageHandlingException(e);
+                return Prelude.Left(err);
             }
         }
 
-        public static ObjectHander GetHandler<TDomainMessage>(
-            TDomainMessage domainMessage, IServiceProvider serviceProvider)
+        public static 
+            Either<IPipelineError, ObjectHander>
+                GetHandler<TDomainMessage>(
+                    TDomainMessage domainMessage, 
+                    IServiceProvider serviceProvider)
         {
             Type msgType = domainMessage.GetType();
             Type handlerType =
                 typeof(IHandler<>).MakeGenericType(msgType);
 
-            object handler =
-                serviceProvider.GetService(handlerType);
+            object handler;
+            try
+            {
+                handler =
+                    serviceProvider.GetService(handlerType);
+            }
+            catch (Exception e)
+            {
+                return Prelude.Left<IPipelineError>(
+                    new UnableToConstructHandler(e));
+            }
 
             MethodInfo handleMethod = handlerType.GetMethod("Handle");
+            if (handleMethod == null)
+                return Prelude.Left<IPipelineError>(
+                    new NoHandleMethodOnHandler());
             
             return new ObjectHander(handler, handleMethod);
         }
@@ -159,5 +213,4 @@ namespace SimpleMessagePipelineTests
         }
     }
 }
-    
     

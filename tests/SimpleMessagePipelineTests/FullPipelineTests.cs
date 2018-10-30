@@ -77,7 +77,7 @@ namespace SimpleMessagePipelineTests
             IServiceCollection serviceCollection = iocManagement.CreateServiceCollection();
             ServiceProvider rootServiceProvider = serviceCollection.BuildServiceProvider();
             
-            Either<MessagePipeline.MessagePipelineError, Tuple<TransportMessage, object>> 
+            Either<IPipelineError, Tuple<TransportMessage, object>> 
                 processedMessage = await MessagePipeline.Run(
                     messageSource, 
                     new MessageTransform(typeLookup), 
