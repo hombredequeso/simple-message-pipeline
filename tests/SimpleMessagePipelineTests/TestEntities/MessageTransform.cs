@@ -1,4 +1,8 @@
-﻿using LanguageExt;
+﻿using System;
+using System.Collections.Generic;
+using LanguageExt;
+using SimpleMessagePipelineTests.MessageTransforms;
+using Newtonsoft.Json.Linq;
 
 namespace SimpleMessagePipelineTests.TestEntities
 {
@@ -7,7 +11,21 @@ namespace SimpleMessagePipelineTests.TestEntities
     {
         public Option<object> ToDomainMessage(TransportMessage transportMessage)
         {
-            return new Some<object>(transportMessage.Message);
+            var msgType = transportMessage.Metadata["messageType"]
+                .Value<string>();
+            var domainMessage = transportMessage.Message;
+            Option<object> result = MessageDeserializer.Deserialize(
+                _typeLookup,
+                msgType,
+                domainMessage);
+            return result;
+        }
+
+        private IDictionary<string, Type> _typeLookup;
+        public MessageTransform(IDictionary<string, Type> typeLookup)
+        {
+            _typeLookup = typeLookup ?? throw new ArgumentNullException(nameof(typeLookup));
         }
     }
+    
 }

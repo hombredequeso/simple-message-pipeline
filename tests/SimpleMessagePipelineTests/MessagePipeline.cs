@@ -50,7 +50,6 @@ namespace SimpleMessagePipelineTests
                             rootServiceProvider,
                             iocManagement,
                             transportMessage)).ToOption();
-            
             Either<IPipelineError, Tuple<TTransportMessage, TDomainMessage>> 
                 resFinal = processMessageResult.Match(
                     mpr => mpr,
@@ -137,6 +136,7 @@ namespace SimpleMessagePipelineTests
                 return Prelude.Left(err);
             }
         }
+        
 
         public static 
             Either<IPipelineError, ObjectHander>
