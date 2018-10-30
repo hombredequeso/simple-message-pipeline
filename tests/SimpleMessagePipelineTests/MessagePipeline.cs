@@ -25,71 +25,139 @@ namespace SimpleMessagePipelineTests
 
     public interface ITransportToDomainMessageTransform<TTransportMessage, TDomainMessage>
     {
-        TDomainMessage ToDomainMessage(TTransportMessage transportMessage);
+        Option<TDomainMessage> ToDomainMessage(TTransportMessage transportMessage);
     }
 
     public static class MessagePipeline
     {
-        public static Task<Option<TTransportMessage>> Run<TTransportMessage, TDomainMessage>(
-            IMessageSource<TTransportMessage> messageSource,
-            ITransportToDomainMessageTransform<TTransportMessage, TDomainMessage> messageTransform,
-            ServiceProvider rootServiceProvider,
-            IIocManagement<TTransportMessage> iocManagement
+        public static async Task<Either<
+                MessagePipelineError, 
+                Tuple<TTransportMessage, TDomainMessage>>>
+            Run<TTransportMessage, TDomainMessage>(
+                IMessageSource<TTransportMessage> messageSource,
+                ITransportToDomainMessageTransform<TTransportMessage, TDomainMessage> messageTransform,
+                ServiceProvider rootServiceProvider,
+                IIocManagement<TTransportMessage> iocManagement
         )
         {
-            return 
-                messageSource.Poll()
-                .MapAsync(transportMessage =>
-                    TransportMessageZ(
-                        messageSource, 
-                        messageTransform, 
-                        rootServiceProvider, 
-                        iocManagement, 
-                        transportMessage)
-                ).ToOption();
+            Option<TTransportMessage> transportMessageO = 
+                await messageSource.Poll();
+            Option<Either<MessagePipelineError, Tuple<TTransportMessage, TDomainMessage>>> 
+                processMessageResult =
+                await transportMessageO.MapAsync(
+                    transportMessage =>
+                        ProcessTransportMessage(
+                            messageTransform,
+                            rootServiceProvider,
+                            iocManagement,
+                            transportMessage)).ToOption();
+            
+            Either<MessagePipelineError, Tuple<TTransportMessage, TDomainMessage>> 
+                resFinal = processMessageResult.Match(
+                mpr => mpr,
+                () => Prelude.Left(MessagePipelineError.NoTransportMessageAvailable)
+            );
+            
+            resFinal.IfRight(m => messageSource.Ack(m.Item1));
+            
+            return resFinal;
         }
 
-        private static async Task<TTransportMessage>
-            TransportMessageZ<TTransportMessage, TDomainMessage>(
-                IMessageSource<TTransportMessage> messageSource,
+        public enum MessagePipelineError
+        {
+            NoTransportMessageAvailable = 1,
+            ErrorParsingTransportMessage,
+            ExceptionHandlingMessage
+        }
+
+        private static Task<Either<
+                MessagePipelineError, 
+                Tuple<TTransportMessage, TDomainMessage>>>
+            ProcessTransportMessage<TTransportMessage, TDomainMessage>(
                 ITransportToDomainMessageTransform<TTransportMessage,
                     TDomainMessage> messageTransform,
                 ServiceProvider rootServiceProvider,
                 IIocManagement<TTransportMessage> iocManagement,
                 TTransportMessage transportMessage)
         {
+            Option<TDomainMessage> domainMessageO =
+                messageTransform.ToDomainMessage(transportMessage);
+            
+            OptionAsync<Either<MessagePipelineError, Tuple<TTransportMessage, TDomainMessage>>> result2 = 
+                domainMessageO.MapAsync(d =>
+                    HandleDomainMessage(
+                        rootServiceProvider,
+                        iocManagement,
+                        transportMessage,
+                        d));
+
+            return result2.Match(
+                sm => sm,
+                () => Prelude.Left(MessagePipelineError
+                    .ErrorParsingTransportMessage));
+        }
+        
+        private static async Task<Either<
+                                    MessagePipelineError, 
+                                    Tuple<TTransportMessage, TDomainMessage>>>
+            HandleDomainMessage<TTransportMessage, TDomainMessage>(
+                ServiceProvider rootServiceProvider,
+                IIocManagement<TTransportMessage> iocManagement,
+                TTransportMessage transportMessage,
+                TDomainMessage domainMessage)
+        {
             using (IServiceScope scope = rootServiceProvider.CreateScope())
             {
-                TDomainMessage domainMessage =
-                    messageTransform.ToDomainMessage(transportMessage);
-                // Setup the pipeline for running through the current msg:
-                IServiceProvider scopeServiceProvider =
-                    scope.ServiceProvider;
-                iocManagement.InitialiseScope(scopeServiceProvider,
-                    transportMessage);
-
-                Type msgType = domainMessage.GetType();
-                Type handlerType =
-                    typeof(IHandler<>).MakeGenericType(msgType);
-
-                object handler = scopeServiceProvider.GetService(handlerType);
-                
-                MethodInfo handleMethod = handlerType.GetMethod("Handle");
+                var scopeServiceProvider = scope.ServiceProvider;
+                iocManagement.InitialiseScope(scopeServiceProvider, transportMessage);
+                var handler = GetHandler(domainMessage, scopeServiceProvider);
 
                 try
                 {
-                    Task t = (Task) handleMethod.Invoke(handler,
+                    Task t = (Task) handler.Method.Invoke(handler.Object,
                         new[] {(object) domainMessage});
                     await t.ConfigureAwait(false);
-                    await messageSource.Ack(transportMessage);
+                    return Prelude.Right(
+                        Tuple.Create(transportMessage,
+                        domainMessage));
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine(
                         $"Error handling message: {e.Message}");
+                    return Prelude.Left(MessagePipelineError.ExceptionHandlingMessage);
                 }
             }
-            return transportMessage;
+        }
+
+        public static ObjectHander GetHandler<TDomainMessage>(
+            TDomainMessage domainMessage, IServiceProvider serviceProvider)
+        {
+            Type msgType = domainMessage.GetType();
+            Type handlerType =
+                typeof(IHandler<>).MakeGenericType(msgType);
+
+            object handler =
+                serviceProvider.GetService(handlerType);
+
+            MethodInfo handleMethod = handlerType.GetMethod("Handle");
+            
+            return new ObjectHander(handler, handleMethod);
+        }
+
+        public struct ObjectHander
+        {
+            public ObjectHander(object o, MethodInfo method)
+            {
+                Object = o ?? throw new ArgumentNullException(nameof(o));
+                Method = method ??
+                         throw new ArgumentNullException(nameof(method));
+            }
+
+            public object Object { get; set; }
+            public MethodInfo Method { get; set; }
         }
     }
 }
+    
+    

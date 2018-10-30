@@ -1,11 +1,13 @@
-﻿namespace SimpleMessagePipelineTests.TestEntities
+﻿using LanguageExt;
+
+namespace SimpleMessagePipelineTests.TestEntities
 {
     public class MessageTransform 
         : ITransportToDomainMessageTransform<TransportMessage, object>
     {
-        public object ToDomainMessage(TransportMessage transportMessage)
+        public Option<object> ToDomainMessage(TransportMessage transportMessage)
         {
-            return transportMessage.Message;
+            return new Some<object>(transportMessage.Message);
         }
     }
 }
