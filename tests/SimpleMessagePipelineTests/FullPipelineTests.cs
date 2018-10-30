@@ -12,7 +12,6 @@ using Xunit;
 
 namespace SimpleMessagePipelineTests
 {
-    
     public class MessageTransform 
         : ITransportToDomainMessageTransform<TransportMessage, object>
     {
