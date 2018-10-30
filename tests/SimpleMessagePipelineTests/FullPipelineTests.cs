@@ -26,16 +26,6 @@ namespace SimpleMessagePipelineTests
                 })
             };
             
-            TransportMessage transportMessage2 = new TransportMessage()
-            {
-                Message = JsonConvert.SerializeObject(testEvent),
-                Metadata = JObject.FromObject(new
-                {
-                    messageType = TestEvent.MessageType
-                })
-            };
-            
-            transportMessage.Should().BeEquivalentTo(transportMessage2);
             
             var scopeId = Guid.NewGuid();
             

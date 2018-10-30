@@ -29,7 +29,7 @@ namespace SimpleMessagePipelineTests.TestEntities
             IServiceProvider scopedServiceProvider,
             TTransportMessage transportMessage)
         {
-            var executionContextSetter = scopedServiceProvider
+            ISetExecutionContext<TTransportMessage> executionContextSetter = scopedServiceProvider
                 .GetService<ISetExecutionContext<TTransportMessage>>();
             Guid id = _scopeId;
             executionContextSetter.Id = id;

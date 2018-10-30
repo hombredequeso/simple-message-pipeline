@@ -6,6 +6,8 @@ namespace SimpleMessagePipelineTests.TestEntities
     {
         public TestEvent(Guid id)
         {
+            if (id == Guid.Empty)
+                throw new ArgumentException("TestEvent.Id cannot be Guid.Empty");
             Id = id;
         }
 
@@ -13,6 +15,9 @@ namespace SimpleMessagePipelineTests.TestEntities
 
         public static string MessageType =
             "simplemessagepipelinetests.testentities.testevent:1.0";
+        
+        #region Value Equality
+        
         public bool Equals(TestEvent other)
         {
             if (ReferenceEquals(null, other)) return false;
@@ -42,6 +47,8 @@ namespace SimpleMessagePipelineTests.TestEntities
         {
             return !Equals(left, right);
         }
+        
+        #endregion
 
     }
 }
