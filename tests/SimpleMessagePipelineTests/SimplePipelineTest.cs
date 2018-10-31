@@ -42,11 +42,11 @@ namespace SimpleMessagePipelineTests.Simple
     // created per processing of a TransportMessage.
     public class SimpleTestIocManagement: IIocManagement<TransportMessage>
     {
-        private Guid _scopeId;
+        private List<Guid> _scopeId;
 
-        public SimpleTestIocManagement(Guid scopeId)
+        public SimpleTestIocManagement(params Guid[] scopeId)
         {
-            _scopeId = scopeId;
+            _scopeId = scopeId.ToList();
         }
 
         public IServiceCollection CreateServiceCollection()
@@ -57,10 +57,11 @@ namespace SimpleMessagePipelineTests.Simple
                 context => context.GetRequiredService<ExecutionContext<TransportMessage>>());
             serviceCollection.AddScoped<ISetExecutionContext<TransportMessage>>(
                 context => context.GetRequiredService<ExecutionContext<TransportMessage>>());
+
+            serviceCollection.AddSingleton<TestEventHandlerInvocationStats>();
             
             // Glue:
-            serviceCollection
-                .AddScoped<IHandler<TestEvent>, TestEventHandler>();
+            serviceCollection.AddScoped<IHandler<TestEvent>, TestEventHandler>();
             
             return serviceCollection;
         }
@@ -71,9 +72,17 @@ namespace SimpleMessagePipelineTests.Simple
         {
             ISetExecutionContext<TransportMessage> executionContextSetter = scopedServiceProvider
                 .GetService<ISetExecutionContext<TransportMessage>>();
-            Guid id = _scopeId;
-            executionContextSetter.Id = id;
-            executionContextSetter.TransportMessage = transportMessage;
+            
+            _scopeId.HeadAndTail().Match(
+                ht =>
+                {
+                    Guid id = ht.Item1;
+                    _scopeId = ht.Item2.ToList();
+                    executionContextSetter.Id = id;
+                    executionContextSetter.TransportMessage = transportMessage;
+                },
+                () => throw new Exception("ran out of scopeId's")
+            );
         }
     }
     
@@ -91,16 +100,20 @@ namespace SimpleMessagePipelineTests.Simple
     public class TestEventHandler : IHandler<TestEvent>
     {
         private readonly IExecutionContext<TransportMessage> _executionContext;
+        private readonly TestEventHandlerInvocationStats _stats;
 
-        public TestEventHandler(IExecutionContext<TransportMessage> executionContext)
+        public TestEventHandler(
+            IExecutionContext<TransportMessage> executionContext,
+            TestEventHandlerInvocationStats stats)
         {
             _executionContext = executionContext;
+            _stats = stats;
         }
 
         public async Task Handle(TestEvent msg)
         {
             int z = await Task.FromResult(1);
-            TestEventHandlerInvocationStats.HandledEvents
+            _stats.HandledEvents
                 .Add(Tuple.Create(
                     _executionContext.Id, 
                     _executionContext.TransportMessage, 
@@ -108,9 +121,9 @@ namespace SimpleMessagePipelineTests.Simple
         }
     }
 
-    public static class TestEventHandlerInvocationStats
+    public class TestEventHandlerInvocationStats
     {
-        public static List<Tuple<Guid, TransportMessage, TestEvent>> HandledEvents = 
+        public List<Tuple<Guid, TransportMessage, TestEvent>> HandledEvents = 
             new List<Tuple<Guid, TransportMessage, TestEvent>>();
     }
     
@@ -118,7 +131,7 @@ namespace SimpleMessagePipelineTests.Simple
     public class SimplePipelineTest
     {
         [Fact]
-        public async void BasicPipelineTest()
+        public async void One_Run_Through_Pipeline_With_TransportMessage_Succeeds()
         {
             TestEvent testEvent= new TestEvent(Guid.NewGuid());
             TransportMessage transportMessage = new TransportMessage(testEvent);
@@ -140,8 +153,9 @@ namespace SimpleMessagePipelineTests.Simple
                     iocManagement);
             
             messageSource.AckCount.Should().Be(1);
-            TestEventHandlerInvocationStats.HandledEvents.Single().Should().BeEquivalentTo(
-                Tuple.Create(scopeId, transportMessage, testEvent));
+            rootServiceProvider.GetService<TestEventHandlerInvocationStats>()
+                .HandledEvents.Single().Should().BeEquivalentTo(
+                    Tuple.Create(scopeId, transportMessage, testEvent));
             
             processedMessage.BiIter(
                 right =>
@@ -155,6 +169,86 @@ namespace SimpleMessagePipelineTests.Simple
                 },
                 left => "Should be right".AssertFail()
             );
+        }
+
+        [Fact]
+        public async void One_Run_Through_Pipeline_With_No_TransportMessage_Does_Nothing()
+        {
+            var messageSource = new TestMessageSource<TransportMessage>();
+            IIocManagement<TransportMessage> iocManagement = 
+                new SimpleTestIocManagement(Guid.NewGuid());
+            
+            // Initialize Ioc
+            IServiceCollection serviceCollection = iocManagement.CreateServiceCollection();
+            ServiceProvider rootServiceProvider = serviceCollection.BuildServiceProvider();
+            
+            Either<IPipelineError, Tuple<TransportMessage, object>> 
+                processedMessage = await MessagePipeline.Run(
+                    messageSource, 
+                    new SimpleMessageTransform(), 
+                    rootServiceProvider, 
+                    iocManagement);
+            
+            messageSource.AckCount.Should().Be(0);
+            rootServiceProvider.GetService<TestEventHandlerInvocationStats>()
+                .HandledEvents.Count.Should().Be(0);
+            
+            processedMessage.BiIter(
+                right =>
+                {
+                    "Should be right".AssertFail();
+                },
+                left => left.Should().BeOfType<NoTransportMessageAvailable>()
+            );
+        }
+        
+        [Fact]
+        public async void Multiple_Runs_Through_Pipeline_Processes_Provided_Messages()
+        {
+            int runCount = 10;
+            var scopeIds = Enumerable.Range(0, runCount)
+                .Select(i => Guid.NewGuid())
+                .ToList();
+            var testEvents = Enumerable.Range(0, runCount)
+                .Select(i => new TestEvent(Guid.NewGuid())).ToList();
+            var transportEvents = testEvents
+                .Select(t => new TransportMessage(t))
+                .ToArray();
+
+            List<Tuple<Guid, TransportMessage, TestEvent>> expectedHandledEvents = 
+                scopeIds
+                    .Zip(transportEvents)
+                    .Zip(testEvents, (a, b) => Tuple.Create(a.Item1, a.Item2, b))
+                    .ToList();
+            
+            var messageSource = new TestMessageSource<TransportMessage>(transportEvents);
+            IIocManagement<TransportMessage> iocManagement = 
+                new SimpleTestIocManagement(scopeIds.ToArray());
+            
+            // Initialize Ioc
+            IServiceCollection serviceCollection = iocManagement.CreateServiceCollection();
+            ServiceProvider rootServiceProvider = serviceCollection.BuildServiceProvider();
+
+            List<Either<IPipelineError, Tuple<TransportMessage, object>>> runResults =
+                new List<Either<IPipelineError, Tuple<TransportMessage, object>>>();
+            for (var i = 0; i < runCount; i++)
+            {
+                Either<IPipelineError, Tuple<TransportMessage, object>> 
+                    processedMessage = await MessagePipeline.Run(
+                        messageSource, 
+                        new SimpleMessageTransform(), 
+                        rootServiceProvider, 
+                        iocManagement);
+                runResults.Add(processedMessage);
+            }
+
+            runResults.Count.Should().Be(runCount);
+            messageSource.AckCount.Should().Be(runCount);
+            rootServiceProvider.GetService<TestEventHandlerInvocationStats>()
+                .HandledEvents.Count.Should().Be(runCount);
+
+            rootServiceProvider.GetService<TestEventHandlerInvocationStats>()
+                .HandledEvents.Should().BeEquivalentTo(expectedHandledEvents);
         }
     }
 }

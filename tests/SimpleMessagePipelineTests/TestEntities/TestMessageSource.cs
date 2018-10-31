@@ -1,21 +1,34 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using LanguageExt;
 
 namespace SimpleMessagePipelineTests.TestEntities
 {
     public class TestMessageSource<TMsg> : IMessageSource<TMsg>
     {
-        private TMsg _message;
+        private List<TMsg> _messages;
         public int AckCount { get; private set; }
         
-        public TestMessageSource(TMsg message)
+        public TestMessageSource(params TMsg[] message)
         {
-            _message = message;
+            _messages = message.ToList();
         }
 
         public Task<Option<TMsg>> Poll()
         {
-            return Task.FromResult(Option<TMsg>.Some(_message));
+            Option<Tuple<TMsg, IEnumerable<TMsg>>> headAndTailO = 
+                _messages.HeadAndTail();
+
+            // Mutation of state isolated to this:
+            foreach (var ht in headAndTailO)
+            {
+                _messages = ht.Item2.ToList();
+            }
+            
+            return Task.FromResult(
+                headAndTailO.Map(ht => ht.Item1));
         }
 
         public Task Ack(TMsg msg)
