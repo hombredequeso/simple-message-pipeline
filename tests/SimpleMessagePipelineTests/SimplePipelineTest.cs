@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using FluentAssertions.Execution;
+using FluentAssertions.Primitives;
 using LanguageExt;
 using Microsoft.Extensions.DependencyInjection;
 using SimpleMessagePipelineTests.TestEntities;
@@ -120,7 +122,7 @@ namespace SimpleMessagePipelineTests.Simple
                     msg));
         }
     }
-
+    
     public class TestEventHandlerInvocationStats
     {
         public List<Tuple<Guid, TransportMessage, TestEvent>> HandledEvents = 
@@ -130,6 +132,49 @@ namespace SimpleMessagePipelineTests.Simple
     
     public class SimplePipelineTest
     {
+        [Fact]
+        public async void
+            When_Handler_Throws_Exception_It_Is_Returned_In_Result()
+        {
+            TestEvent testEvent= new TestEvent(Guid.NewGuid());
+            TransportMessage transportMessage = new TransportMessage(testEvent);
+            var scopeId = Guid.NewGuid();
+            
+            var messageSource = new TestMessageSource<TransportMessage>(transportMessage);
+            IIocManagement<TransportMessage> iocManagement = 
+                new SimpleTestIocManagement(scopeId);
+            
+            // Initialize Ioc
+            IServiceCollection serviceCollection = iocManagement.CreateServiceCollection();
+            ServiceProvider rootServiceProvider = serviceCollection.BuildServiceProvider();
+            
+            Either<IPipelineError, Tuple<TransportMessage, object>> 
+                processedMessage = await MessagePipeline.Run(
+                    messageSource, 
+                    new SimpleMessageTransform(), 
+                    rootServiceProvider, 
+                    iocManagement);
+            
+            messageSource.AckCount.Should().Be(1);
+            rootServiceProvider.GetService<TestEventHandlerInvocationStats>()
+                .HandledEvents.Single().Should().BeEquivalentTo(
+                    Tuple.Create(scopeId, transportMessage, testEvent));
+            
+            processedMessage.BiIter(
+                right =>
+                {
+                    // Sadly, have to cast )-:
+                    var castTestValue = Tuple.Create(right.Item1,
+                        (TestEvent) right.Item2);
+                    castTestValue.Should()
+                        .BeEquivalentTo(Tuple.Create(transportMessage,
+                            testEvent));
+                },
+                left => "Should be right".AssertFail()
+            );
+            
+        }
+        
         [Fact]
         public async void One_Run_Through_Pipeline_With_TransportMessage_Succeeds()
         {

@@ -21,7 +21,7 @@ namespace SimpleMessagePipelineTests
             Exception = exception;
         }
 
-        public Exception Exception { get; }
+        public System.Exception Exception { get; }
     }
     
     public class NoHandleMethodOnHandler: IPipelineError
