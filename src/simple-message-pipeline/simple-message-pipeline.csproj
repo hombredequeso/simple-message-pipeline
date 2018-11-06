@@ -3,4 +3,9 @@
     <TargetFramework>netcoreapp2.1</TargetFramework>
     <RootNamespace>simple_message_pipeline</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="LanguageExt.Core" Version="3.0.31" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="2.1.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
+  </ItemGroup>
 </Project>

@@ -5,11 +5,19 @@ namespace SimpleMessagePipelineTests
     public interface IPipelineError
     {}
     
-    public class MessageHandlingException: IPipelineError
+    public class MessageHandlingException<TTransportMessage, TDomainMessage>: IPipelineError
     {
+        public readonly TTransportMessage TransportMessage;
+        public readonly TDomainMessage DomainMessage;
         public Exception Exception { get; }
-        public MessageHandlingException(Exception exception)
+        
+        public MessageHandlingException(
+            TTransportMessage transportMessage,
+            TDomainMessage domainMessage,
+            Exception exception)
         {
+            TransportMessage = transportMessage;
+            DomainMessage = domainMessage;
             Exception = exception;
         }
     }

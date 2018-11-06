@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace SimpleMessagePipelineTests.TestEntities
+namespace SimpleMessagePipelineTests
 {
     public class ExecutionContext<TTransportMessage>
         : ISetExecutionContext<TTransportMessage>, 

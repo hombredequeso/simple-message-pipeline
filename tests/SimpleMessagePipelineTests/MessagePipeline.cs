@@ -132,7 +132,11 @@ namespace SimpleMessagePipelineTests
             }
             catch (Exception e)
             {
-                IPipelineError err = new MessageHandlingException(e);
+                IPipelineError err = 
+                    new MessageHandlingException<TTransportMessage, TDomainMessage>(
+                        transportMessage, 
+                        domainMessage, 
+                        e);
                 return Prelude.Left(err);
             }
         }
