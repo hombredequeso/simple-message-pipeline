@@ -7,6 +7,7 @@ using LanguageExt;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using SimpleMessagePipelineTests.TestEntities;
+using SimpleMessagePipelineTests.Util;
 
 namespace SimpleMessagePipelineTests
 {

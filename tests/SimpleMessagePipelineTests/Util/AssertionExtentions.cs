@@ -1,6 +1,6 @@
 ﻿using Xunit;
 
-namespace SimpleMessagePipelineTests
+namespace SimpleMessagePipelineTests.Util
 {
     public static class AssertionExtentions
     {

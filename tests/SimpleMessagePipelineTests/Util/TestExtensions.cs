@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LanguageExt;
 
-namespace SimpleMessagePipelineTests
+namespace SimpleMessagePipelineTests.Util
 {
     public static class TestExtensions
     {

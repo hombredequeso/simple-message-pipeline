@@ -6,6 +6,7 @@ using FluentAssertions;
 using LanguageExt;
 using Microsoft.Extensions.DependencyInjection;
 using SimpleMessagePipelineTests.TestEntities;
+using SimpleMessagePipelineTests.Util;
 using Xunit;
 
 namespace SimpleMessagePipelineTests.Simple

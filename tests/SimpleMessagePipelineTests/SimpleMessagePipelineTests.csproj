@@ -11,6 +11,6 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Remove="FullPipelineWithDeserializationTests.cs" />
+    <ProjectReference Include="..\..\src\simple-message-pipeline\simple-message-pipeline.csproj" />
   </ItemGroup>
 </Project>

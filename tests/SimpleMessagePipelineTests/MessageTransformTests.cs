@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using FluentAssertions;
 using LanguageExt;
 using Newtonsoft.Json;
-using Xunit;
 using SimpleMessagePipelineTests.TestEntities;
+using SimpleMessagePipelineTests.Util;
+using Xunit;
 
-namespace SimpleMessagePipelineTests.MessageTransforms
+namespace SimpleMessagePipelineTests
 {
     public class MessageDeserializerTests
     {

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using LanguageExt;
 using Newtonsoft.Json;
 
-namespace SimpleMessagePipelineTests
+namespace SimpleMessagePipelineTests.TestEntities
 {
     public static class MessageDeserializer
     {

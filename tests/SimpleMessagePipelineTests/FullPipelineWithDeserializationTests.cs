@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Xunit;
 using SimpleMessagePipelineTests.TestEntities;
+using SimpleMessagePipelineTests.Util;
 
 namespace SimpleMessagePipelineTests
 {
